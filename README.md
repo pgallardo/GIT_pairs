@@ -4,7 +4,7 @@ The package VGIT-0.6.12, was created to complement the article  "VGIT for pairs,
 
 The code in the folder VGIT has the following files:
 
-1. The file " _init_.py" is required to make Python treat the directories as containing packages. Then, we can import the modules 'VGIT', 'Hypersurfaces', 'Monomials', and 'OPSubgroups'.
+1. The file " __ init __.py" is required to make Python treat the directories as containing packages. Then, we can import the modules 'VGIT', 'Hypersurfaces', 'Monomials', and 'OPSubgroups'.
 2. The file "Monomials.py" contains the sub-package Monomials with the class Monomials to deal with one monomial and the class MonFrozenSet to deal with a set of monomials. In this file, the reader can find the Hilbert_Mumford function and the function that generates the normalized one-parameter subgroups from a list of monomials.
 3. The file OPSubgroups.py contains the sub-package OPSubgroups with the class OPS and all the methods to work with them. It imports from the class "Monomials", "associated1ps" and "MonFrozenSet"
 4. The file "VGIT.py" contains the metaclasses "Problem", "Solution" and "Solution_t" that defines the VGIT problem and it stores the solutions.
