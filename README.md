@@ -1,8 +1,8 @@
 # GIT_pairs
 
-The package VGIT-0.6.12, was created to complement the article  "VGIT for pairs, a computational approach" (with J. Martinez-Garcia)  (see http://arxiv.org/abs/1602.05282), and we expect it can be used by other mathematicians to solve problems. Detailed algorithms will appear in an upcoming article, together with further applications. The source code and data, but not the text of this article, are released under a Creative Commons CC BY-SA 4.0 license. If you make use of the source code and/or data in an academic or commercial context, you should acknowledge this by including a reference or citation to Variations of geometric invariant quotients for pairs, a computational approach —in the case of the code— or to Moduli of cubic surfaces and their anticanonical divisors —in the case of the data for cubic surfaces.
+This package was created to complement the article  "VGIT for pairs, a computational approach" which is joint work with Jesus Martinez-Garcia  (see http://arxiv.org/abs/1602.05282). We expect our software can be used by other mathematicians to solve problems related to VGIT. The source code and data are released under a Creative Commons CC BY-SA 4.0 license. If you make use of the code and data in an academic or commercial context, you should acknowledge a reference or citation to our work.   
 
-The code in the folder VGIT has the following files:
+The code in the folder VGIT has the following structure:
 
 1. The file " __ init __.py" is required to make Python treat the directories as containing packages. Then, we can import the modules 'VGIT', 'Hypersurfaces', 'Monomials', and 'OPSubgroups'.
 2. The file "Monomials.py" contains the sub-package Monomials with the class Monomials to deal with one monomial and the class MonFrozenSet to deal with a set of monomials. In this file, the reader can find the Hilbert_Mumford function and the function that generates the normalized one-parameter subgroups from a list of monomials.
