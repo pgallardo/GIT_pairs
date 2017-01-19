@@ -17,7 +17,7 @@ We describe the file so that it can be understood in the context our article. Fo
 2. The program returns the fundamental set of one-parameter subgroups. The program also tells you which one-parameter subgroups are not necessary for the GIT analysis.
 3. For each $t_i$, the program returns a list of one-parameter subgroups that generate non-stable maximal sets. The program recognizes the changes in the non-stable maximal sets with respect the previous $t_{i-1}$. There are three types of outputs:
 
- 3.1 If a non-stable set of monomial has appeared for an earlier $t_i$, then it is denoted as "same".
+ 3.1. If a non-stable set of monomial has appeared for an earlier $t_i$, then it is denoted as "same".
  
  3.2. If it becomes semistable, then it is denoted as "same but becomes semistable."
  
