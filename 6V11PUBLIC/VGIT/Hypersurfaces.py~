@@ -1,0 +1,255 @@
+##################################################################
+#Package name: VGIT.Hypersurfaces
+#Creation date: 14/05/20
+#Description: Contains the subpackage Hypersurfaces, for VGIT 
+#   problems about hypersurfaces
+##################################################################
+from VGIT import Problem, Solution
+from Monomials import MonSet, MonFrozenSet
+from OPSubgroups import OPS_set, OPS, OPS_destabilized_pairs
+import time
+from sympy import Rational
+
+########################
+#Class: VGIT.Hypersurfaces.Problem
+#Parent class: VGIT.Problem
+#Attributes:
+#       debug: 1 for debug mode
+#       dimension: dimension of the problem, e.g. for surfaces dimension=2
+#       deg: degree of the problem.
+#Description: Class to define a VGIT problem of hypersurfaces
+#Methods:
+#   __init__(self,debug,dimension): creates new objects
+########################
+
+class Problem(Problem):
+	def __init__(self,debug,dimension,degree, pairs=0, div_degree=1):
+		super(Problem, self).__init__(debug,dimension)
+		self.deg=degree;
+		self.pairs=pairs;
+		self.div_degree=div_degree;
+		self.all1PS=None;
+		#Since the monomials are in the ambient projective space
+		#we must add 2 to the dimension (one to make it projective,
+		#an andother for the fact that X is hypersurface of P^{n+1}
+		if debug: print 'Creating set with all monomials.'
+		self.allMonomials=MonSet(self.dim+2, self.deg, 0)
+		if pairs:
+			self.allPairs=MonSet(self.dim+2,self.deg,[], gamma=None,pairs=self.pairs, div_degree=self.div_degree,t=0)
+			self.allDivisors=MonSet(self.dim+2, self.div_degree, 0)
+		else:
+                        self.allPairs=None
+                        self.allDivisors=None
+	def all_pairs(self):
+                if (not self.pairs):
+                        return None
+                else:
+                        return self.allPairs
+        def all_monomials(self):
+                return self.allMonomials
+        def all_divisors(self):
+                return self.allDivisors
+        def all_1PS(self):
+                if (self.all1PS):
+                        return self.all1PS
+                else:
+                        return None
+	def solve(self):
+	    return self.solve_t(0)
+	def solve_t(self,t):
+		sol=Solution(self.debug, self.dim, self.deg, self.pairs, t, self.allPairs, self.allMonomials, self.allDivisors)
+		if self.debug:
+			print 'Creating set with all 1PS.'
+		self.all1PS=OPS_set(self.dim+2, self.allPairs, self.pairs, t)
+		if self.debug:
+			print 'It found all 1PS'                
+
+		#1) WE FIND THE NON-SEMI STABLE SETS OF MONOMIALS
+		all_M_sets=set()
+		if self.pairs:
+			if self.debug: print 'Solving problem for pairs.\n Creating a set of all sets of pairs destabilised by a 1-parameter subgroup'
+			dict_M_gamma={}
+			for gamma in self.all1PS:
+                                M_gammas_set=OPS_destabilized_pairs(self.dim+2, self.deg, gamma, t, self.allPairs, self.allMonomials, self.allDivisors, honest_annihilator=0)
+				dict_M_gamma[gamma]=M_gammas_set
+				for M_gamma in M_gammas_set:
+                                        all_M_sets.add(M_gamma)
+			if self.debug: print 'Finding maximal sets of monomials M^+(lambda)'
+			for gamma in self.all1PS:
+				M_gammas_set=dict_M_gamma[gamma]
+				for M_gamma in M_gammas_set:
+                                        flag=1
+                                        for M in all_M_sets:
+                                                M_variety_set, M_divisor_set = M
+                                                Mgamma_variety_set, Mgamma_divisor_set = M_gamma
+                                                if (((Mgamma_variety_set<=M_variety_set) and (Mgamma_divisor_set<M_divisor_set)) or ((Mgamma_variety_set<M_variety_set) and (Mgamma_divisor_set<=M_divisor_set))) :
+                                                        flag=0
+                                                        break
+                                        if flag:
+                                                sol.add_non_stable(gamma,M_gamma)
+                                                
+			if self.debug: print 'Problem solved'
+		else:   
+			if self.debug: print 'Solving problem for varieties.\n Creating a set of all sets of monomials destabilised by a 1-parameter subgroup'
+			for gamma in self.all1PS:
+				M_gamma=MonSet(self.dim+2,self.deg,[],gamma,self.pairs, self.div_degree,t)
+				all_M_sets.add(M_gamma)
+			if self.debug: print 'Finding maximal sets of monomials M^+(lambda)'
+			for gamma in self.all1PS:
+				M_gamma=MonSet(self.dim+2, self.deg,[], gamma,self.pairs, self.div_degree,t)
+				flag=1
+				for M in all_M_sets:
+					if M_gamma<M:
+						flag=0
+						break
+				if flag:
+					sol.add_non_stable(gamma,M_gamma)
+			if self.debug: print 'Problem solved'
+
+			
+			
+		#2) WE DISTINGUISH UNSTABLE AND STABLE
+		#TODO
+	       
+		return sol
+	def allPairs(self):
+	    lista= list(self.allPairs)
+	    return lista
+#####################
+##      def Ann(self, t, lambda)
+	##Returns the annihilator of lambda, i.e. all pairs (m,n) such that lambda*(m+tn)=0
+	
+
+########################
+#Class: VGIT.Hypersurfaces.Solution
+#Parent class: VGIT.Solution
+#Attributes:
+#       debug: 1 for debug mode
+#       dimension: dimension of the problem
+#Description: Class to store the solution to a VGIT problem
+#               of hypersurfaces
+#Methods:
+#   __init__(self, debug,dimension): creates a new solution
+#######################
+class Solution(Solution): 
+	def __init__(self,debug,dimension, degree, pairs=0, t=0, allPairs=None, allMonomials=None, allDivisors=None):
+		super(Solution, self).__init__(debug,dimension)
+		self.dimension=dimension
+		self.deg=degree
+		self.pairs=pairs
+		self.t=t
+		self.non_semistable={}
+		self.non_semistable_set=set()
+		self.allPairs=allPairs
+		self.allMonomials=allMonomials
+		self.allDivisors=allDivisors
+		return None
+	def add_non_stable(self, gamma, M_gamma):
+		#First we check that the set M_gamma is not in the solutions as
+		#M^+ of a different 1-parameter subgroup
+                if M_gamma in self.non_semistable_set:
+                        return
+                gamma_list=list()
+                if (gamma in self.non_semistable.keys()):
+                        gamma_list=self.non_semistable[gamma]+[M_gamma]
+                else:
+                        gamma_list.append(M_gamma)
+                self.non_semistable[gamma]=gamma_list
+		self.non_semistable_set.add(M_gamma)
+		return
+	def OPS_list(self):
+		return list(self.non_semistable.keys())
+	def pairs_non_semistable_set(self):
+                return self.non_semistable_set
+	def pairs_non_semistable_list(self):
+                return list(self.non_semistable_set)
+
+        #It returns the elements in the solution which contain the pair
+        def maximal_container(self, pair):
+                subsolution=Solution(self.debug, self.dimension, self.deg, self.pairs, self.t, self.allPairs, self.allMonomials, self.allDivisors)
+                if self.pairs:
+                        initial_variety, initial_divisor=pair
+                        #GENIALIDAD: We use a new Solution to store the information. Llamale genialidad, llamale guano...
+                        for gamma, M_gammas_list in self.non_semistable.iteritems():
+                                for M_gamma in M_gammas_list:
+                                        variety, divisor=M_gamma
+                                        if ((initial_variety<=variety) and (initial_divisor<=divisor)):
+                                                subsolution.add_non_stable(gamma, M_gamma)
+                else:
+                        print 'WARNING: Not implemented for varieties only'
+                return subsolution
+	def printout(self):
+		if self.pairs:
+			print('\n\nThis is a problem of VGIT, we parametrize pairs of hypersurfaces in projective space and divisors given by restriction of hypersurfaces in that projective space')
+			print('The parameter t='),
+			print self.t
+		else:
+			print('\n\nThis is a problem of GIT, we parametrise hypersurfaces in projective space')
+		print 'Dimension: ', self.dim
+		print 'Degree: ', self.deg
+
+		print 'There are %d non-semistable maximal sets of monomials' % len(self.non_semistable_set)
+		print 'We have selected %d destabilising test configurations' % len(self.non_semistable.keys())
+		print 'List of 1-parameter subgroups and their corresponding set of monomials which are not stable:'
+		i=1
+		if self.pairs:
+			for gamma, M_gammas_list in self.non_semistable.iteritems():
+                                print '(',i,') ', 'OPS=',gamma,'\n\n'
+                                print 'Ann(',gamma,')=',gamma.Ann(self.allPairs, self.t)
+                                for M_gamma in M_gammas_list:
+                                        variety, divisor=M_gamma
+                                        print 'M^+(',gamma,')'
+                                        print 'Monomials variety (general element):',
+                                        for monomial in variety:
+                                                print monomial.latex(),',',
+                                        print '\n','Monomials divisor (general element):',
+                                        for monomial in divisor:
+                                                print monomial,',',
+                                        print '\n\n'
+
+                                        minimal_orbit_variety, minimal_orbit_divisor=gamma.MinimalOrbit(variety, divisor, self.t)
+                                        print 'Monomials variety (minimal orbit):',
+                                        for monomial in minimal_orbit_variety:
+                                                print monomial,',',
+                                        print '\n','Monomials divisor (minimal orbit):',
+                                        for monomial in minimal_orbit_divisor:
+                                                print monomial,',',
+                                        print '\n\n'
+
+
+                                        print 'Multiplicity of S at p=(0:0:0:1) mult=', variety.multiplicity_point()
+                                        print '\n'
+                                        singularity_type=set()
+                                        weight=gamma.singularity_weight(variety, singularity_type);
+#                                        print 'Weights of the singularity at p are w=',weight
+                                        print '\n'
+                                        print 'Monomials of singularity are ', singularity_type
+                                        #print 'Du val value of the singularity: ', is_DuVal(singularity_type)
+                                        print '----------------------------------------------\n\n'
+				i=i+1
+				print '\n\n========================================================\n'
+
+		else:
+			for gamma, M_gamma in self.non_semistable.iteritems():
+				print '(',i,') ',
+				print 'M^+(',gamma,')={',
+				for monomial in M_gamma:
+					print monomial,','
+##                                      for i in range(self.dim+2):
+##                                                print 'x_',i,'^',
+##                                                print monomial[i],
+##                                        print ',',
+				print '}.'
+				print '\n'
+		destabilising_OPS=list(self.non_semistable.keys())
+		print 'List of destabilising 1-parameter subgroups'
+		for gamma in destabilising_OPS:
+			print gamma
+
+
+
+
+
+
+
+

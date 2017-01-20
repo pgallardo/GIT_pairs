@@ -1,0 +1,827 @@
+##################################################################
+#Package name: VGIT.Monomials
+#Creation date: 15/05/20
+#Description: Contains the subpackage Monomials with the class
+#       Monomials to deal with one monomial and the class MonSet to deal with
+#       set of monomials.
+#Warning: No other subpackage should work directly with the attributes
+#       of monomials.
+##################################################################
+from sympy.matrices import *
+from sympy import symbols
+from sympy import solve_linear_system
+from sympy import Rational
+import itertools
+########################
+#GLOBAL VARIABLES
+########################
+
+#empty
+
+########################
+#AUXILIARY FUNCTIONS
+########################
+
+def Jlcm(*args):
+    from sympy.core.numbers import igcd
+    """Computes integer least common multiple.
+
+    Examples
+    ========
+
+    >>> from sympy.core.numbers import ilcm
+    >>> ilcm(5, 10)
+    10
+    >>> ilcm(7, 3)
+    21
+    >>> ilcm(5, 10, 15)
+    30
+
+    """
+    if 0 in args:
+        return 0
+    a=args[0][0]
+    for b in args[0][1:]:
+        a = a*b // igcd(a, b)
+    return a
+
+
+def associated1ps(monomials, pairs=0, t=0): #generates the normalized 1-PS from a list of monomials.
+        if not pairs:
+            monomial_list=monomials
+        else:
+            monomial_list=list()
+            if not isinstance(t, Rational):
+                print('FATAL WARNING at Monomials.associated1ps: t is not rational')
+                return None
+            
+            for pair in monomials:
+                variety, divisor=pair
+                monomial_list.append(Monomial([t.q*x + t.p*y for x, y in zip(variety, divisor)]))
+            
+        dim=(monomial_list[0]).dim()
+        #we add the monomial in the centre, which is equivalent to saying that lambda is in SL(n,C).
+        #Therefore this condition is independent of t.
+        monomial_list.append(Monomial([1 for x in range(dim)]))
+        n_mon=len(monomial_list);
+        #building the general matrix
+        #first we put the first component with negative value and reverse the monomials
+        #to assure that this one becomes the solution vector
+        mon_reversed=[]
+        for x in monomial_list:
+            y=list(x)
+            y[0]=-y[0]
+            y.reverse()
+            mon_reversed=mon_reversed+y
+        extended=Matrix(n_mon, dim, mon_reversed)
+        variables=list(symbols('x0:%d'%n_mon))
+
+        #finding solutions
+        system_solution=solve_linear_system(extended, *variables,  rational=True)
+        if system_solution==None:
+            return None
+        #finding least common denominator
+        val=system_solution.values()
+        for x in val:
+            if not isinstance(x,Rational):
+                return None
+        denominators=[x.q for x in val if x.p!=0]
+        lcm=Jlcm(denominators)
+        if not lcm:
+            return None
+        #clearing solutions
+        solution=[int(x*lcm) for x in val]
+        solution.append(lcm)
+        solution.reverse()
+        return solution
+
+
+
+########################
+#Function: AllMon
+#Attributes:
+#       dim: dimension of the monomials
+#       deg: degree of the monomials
+#       gamma (default None): 1-parameter subgroup.
+#       allMonomials: list of all Monomials.
+#Description: returns a list of all monomials of a given dimension and degree.
+#       If gamma!=None, then the list contains only those monomials which are
+#       not stable (unstable or semi-stable) with respect to gamma.
+#       If gamma=None, then it returns all monomials of the given degree and dimension.
+#       It uses the recursive function AllMon_rec (necessary for arbitrary n,d)
+########################
+def AllMon_rec(dim,deg, gamma,allMonomials, monomial_tup=()):
+        if dim>1:
+                for i in range(deg+1):
+                        AllMon_rec(dim-1, deg-i, gamma, allMonomials, monomial_tup+(i,))
+        else:
+                add_monomial=Monomial(list(monomial_tup) + [deg])
+###*** TO DO: The gamma part has to go in AllMon in order to put the t and both monomials in the product.
+                allMonomials.append(add_monomial)
+                    
+def AllMon(dim,deg, gamma=None, pairs=0, div_degree=1, t=0):
+        allMonomials=list()
+        allDivisors=list()
+        allPairs=list()
+        AllMon_rec(dim,deg,gamma,allMonomials)
+        if pairs:
+            AllMon_rec(dim,div_degree,gamma,allDivisors)
+            for pair in itertools.product(allMonomials, allDivisors):
+                if not gamma:
+                    allPairs.append(pair)
+                elif gamma.Prod(pair,pairs, t)>=0:
+                    allPairs.append(pair)
+            return allPairs
+        else:
+            if not gamma:
+                return allMonomials
+            else:
+                for monomial in allMonomials:
+                    if gamma.Prod(monomial)>=0:
+                        allPairs.append(monomial)
+                return allPairs
+
+########################
+#CLASES
+########################
+
+########################
+#Class: Monomial
+#Attributes:
+#       None. Monomial is mainly just a wrap of the class tuple.
+#Description: Class of monomials of arbitrary finite dimension.
+#Methods:
+#   __init__(self,data): creates a Monomial from data
+#   __ge__(A,B): redefines the simbol ">=" to be  the partial order induced by 1-PS
+#   __le__(A,B): redefines the simbol "<=" to be  the partial order induced by 1-PS
+#   deg(self): returns the degree of self
+#   Com(self,m2): returns 1 if self>=m_2, -1 if self<=m_2,
+#               0 if they are uncomparable
+#   analytical(self,B): assuming self and B have the same dimension n, returns true
+#               if self>=B for the first n-1 components and false otherwise.
+#   comA(self,B): assuming self and B have the same dimension n, returns 1
+#               if self>=B analytically, 0 if they are not comparable (analytically)
+#               and 1 if B>=self analytically.
+########################
+
+
+class Monomial(tuple):
+        def __init__(self, data):
+                self=tuple(data)
+        def __hash__(self):
+                if len(self)==0:
+                        return 0
+                else:
+                        return self[0]
+                
+        def __ge__(A,B):
+                a_0=b_0=0
+                for a_i,b_i in zip(A,B):
+                        a_0=a_0+a_i
+                        b_0=b_0+b_i
+                        if a_0<b_0:
+                                break
+                else:
+                        return True
+                return False
+        
+        def __le__(A,B):
+                a_0=b_0=0
+                for a_i,b_i in zip(A,B):
+                        a_0=a_0+a_i
+                        b_0=b_0+b_i
+                        if a_0>b_0:
+                                break
+                else:
+                        return True
+                return False
+
+        def deg(self): 
+                #reduce adds the first two elements of self, the result to
+                #the next two, etc.
+                return reduce( lambda x, y: x+y,self)
+        def loc_deg(self): 
+                return self.deg()-self[len(self)-1]
+            
+        def Com(self,m2): 
+                if (not self>=m2) and (not m2>=self): # true only if not comparable
+                        return 0        
+                elif (self>=m2):        
+                        return 1
+                elif (m2>=self):
+                        return -1
+        def dim(self):
+                return len(self)
+        def larger_equal(self, MonomialsSet):
+                monomialsList=[]
+                for monomial in MonomialsSet:
+                    if monomial>=self:
+                        monomialsList.append(monomial)
+                return tuple(monomialsList)
+        def print_latex(self):
+            return
+#####
+##### THE TWO FOLLOWING DEAL WITH ANALYTICAL REDUCTION at [0:...:0:1]. 
+#####
+        def analytical(self,B): 
+                A1=tuple(self[0:len(self)-1])
+                B1=tuple(B[0:len(B)-1])
+                if A1>=B1:
+                        return True
+                else:
+                        return False 
+        def ComA(self,m2): #1 self reduce to m2, 0 uncomparable, -1 if m2 reduce to m2
+                if (not self.analytical(m2)) and (not m2.analytical(self)): # true only if not comparable by previous command
+                        return 0        
+                else:
+                        if (self.analytical(m2)): # if self disapear for m2     
+                                return 1
+                        elif (m2.analytical(self)): # if m2 dissapear for self
+                                return -1               
+
+########################
+#Class: MonFrozenSet
+#Attributes:
+#       None. MonSet is just a subclass of the class set.
+#Description: Class of  sets of monomials. Used for different purposes.
+########################
+class MonFrozenSet(frozenset):
+    def __new__(cls, dim, deg, data=[], gamma=None, pairs=0, div_degree=1,t=0):
+                #if there is data, it creates the set from data.
+                if data:
+                    return super(MonFrozenSet,cls).__new__(cls,data)
+                #if there is no data, then it uses parameters dim and deg
+                #the first thing to check is that the set is not meant to be empty
+                if dim<=0 or deg<0:
+                    return super(MonFrozenSet,cls).__new__(cls,data)
+                #If there are indeed monomials, then we create a list of them, and then a set
+                #as required by the set construction. We have two options for this. Either
+                #a 1PS was passed as a parameter and then we use tkhis to construct the set, or
+                #otherwise, we just create a set with all Monomials for a given dimension
+                data=AllMon(dim,deg, gamma, pairs, div_degree,t);
+                return super(MonFrozenSet,cls).__new__(cls,data)
+                
+    def __hash__(self):
+                return len(self)
+    def multiplicity_point(self):
+        return min([monomial.loc_deg() for monomial in self])
+
+
+
+########################
+#Class: MonSet
+#Attributes:
+#       None. MonSet is just a subclass of the class set.
+#Description: Class of  sets of monomials or pairs of monomials. Used for different purposes.
+#Methods:
+#   __init__(self,dim, deg, data=[], gamma=None, pairs=0, div_degree=1): creates a set of monomials from
+##              data if data is not empty. Otherwise, if gamma is a 1-PS, it returns
+##              a list of all monomials which are not stable with respect to gamma.
+##              Finally, if no gamma is passed, it creates a set with
+##              *all* monomials with dim variables and degree deg.
+########################
+
+class MonSet(set):
+    def __init__(self, dim, deg, data=[], gamma=None, pairs=0, div_degree=1, t=0):
+                #if there is data, it creates the set from data.
+                if data:
+                    super(MonSet,self).__init__(data)
+                    return
+                #if there is no data, then it uses parameters dim and deg
+                #the first thing to check is that the set is not meant to be empty
+                if dim<=0 or deg<0:
+                    super(MonSet,self).__init__(data)
+                    return
+                #If there are indeed monomials, then we create a list of them, and then a set
+                #as required by the set construction. We have two options for this. Either
+                #a 1PS was passed as a parameter and then we use this to construct the set, or
+                #otherwise, we just create a set with all Monomials for a given dimension
+                data=AllMon(dim,deg, gamma, pairs, div_degree, t);
+                super(MonSet,self).__init__(data)
+                
+
+    def degree(self):
+        if len(self)==0:
+            return -1
+        for x in self:
+            return x.deg()
+
+##****ADAPT
+    def div_degree(self):
+        if len(self)==0:
+            return -1
+        for x in self:
+            return x.deg()
+    
+    def clean(self):
+        self=Monset(0,0)
+        return self
+    def dimension(self):
+        if len(self)==0:
+            return -1
+        for x in self:
+            return x.dim()
+    
+		
+############TODO: ADAPT OR REMOVE WHAT FOLLOWS
+##	def UMops(self,B): # generated configuration (0 >lambda.mi) from the 1-PS B (upper positive half)
+##    	    	a=B.get1PS()[0]; b=B.get1PS()[1];c=B.get1PS()[2];e=B.get1PS()[3]
+##        	for i in range(0,d+1):
+##            		for j in range(0,d+1):
+##                		for k in range(0,d+1):  
+##                			#print i,j,k, a,b,c,e, a*i + b*j +c*k+ e*(d-i-j-k) ;              			
+##                		    	if i+j+k < (d+1) and ( a*i + b*j +c*k+ e*(d-i-j-k) < 0 ):
+##                		        	m = M.monomial(i,j,k,d-i-j-k)			 
+##                		        	self.append(m) 
+##        	        		        		        		        	         		        
+##								 
+##	def AllconfgD(self,a): # create all monomials of degree a
+##		for i in range(0,a+1):
+##			for j in range(0,a+1):
+##				for k in range(0,a+1):
+##					if i+j+k <= a:
+##						m = M.monomial(i,j,k,a-i-j-k)			 
+##						self.append(m)						
+##
+#### TODO: REMOVE??
+####	def convert(self,B):# convert a list into a configuration. Use with care.
+####		self.clean()
+####        	for i in range(0,len(B)):
+####	        	self.append(M.monomial(B[i][0],B[i][1],B[i][2],B[i][3]))
+####	        			
+####	def Set(self,B): # from a confg into a set of tuples
+####		s=len(self)		
+####		for i in range(0,s):# convert the monomials to a tuple
+####			(k0,k1,k2,k3) = (self[i].getX()[0],self[i].getX()[1],self[i].getX()[2],self[i].getX()[3]) 
+####			B.add((k0,k1,k2,k3))
+####	
+##
+##											
+##	def IsContainedOn(self, B): # return true if configuration self is contained on configuration B 
+##		A1 = set()
+##		A2 = set()
+##		self.Set(A1) #converts configuration self into set A1
+##		B.Set(A2) # converts configuration B into set A2
+##		if A1.issubset(A2): # compares set A1 and A2
+##			return True #if self \subset B 
+##		else:
+##			return False			
+##	
+##			
+##	
+##	def Min_r(self):  # This is like Min, but uses Yield. Coded it in 2014 !
+##		B=confg()
+##		l=len(self)
+##		for i in range(0,l): # pick one monomial from self
+##			flag=0; # this measure its minimality, 0 is good, anything else is bad. 
+##			for j in range(0,l): #select all the monomials on self
+##				if self[i].Com(self[j])==1 and (self[i]!=self[j]) :#if someone different and comparable is smaller
+##					flag=1  # then its index is not good enough
+##			if flag==0:
+##				B.append(self[i]) # Here all the monomials from self without a smaller one.	
+##		self.Reduce()				
+##	
+##	def Gen(self,B): #  Given a configuration self, returns the largest one that contained it
+##		for i in range(0,len(self)):
+##			A =confg()		
+##			A.Allconfg() # all the monomials
+##			for k in range(0,len(A)):
+##				if A[k].Com(self[i])==1:
+##					B.append(A[k])# WARNING. Adds not monomials but list					
+##				
+##	def Max(self,B):  # Given a configuration self of monomials returns the maximal ones and save then in the configuration B
+##		l=len(self)
+##		for i in range(0,l): # pick one monomial from self
+##			flag=0; # this measure its maximality, 0 is good, anything else is bad. 
+##			for j in range(0,l): #select all the monomials 
+##				if self[j].Com(self[i])==1 and (self[i]!=self[j]) :#if someone different and comparable is larger
+##					flag=1  # then its index is not good enough
+##			if flag			==0:
+##				B.append(self[i]) # Here are all the monomials from self without larger one.	
+##		self.Reduce()					
+##						
+##	#***TODO-J: Remove this function from all code and delete.					
+##	def CheckL(self,L): #output:list L of 1-PS such that self \subset M+(L[i]). Repetations checked with minimal monomials.
+##		S=[] #list for saving the L[i]	
+##		FC = confg(); self.Min(FC); FS=set(); FC.Set(FS) #  FS is the set of minimals monomials of self
+##		#B=set(); self.Set(B)  # B is the set of monomials associated to self
+##		FlagRepeat=0; Temp=[] # detect and save if self and some M(L[i]) are equal.
+##		#print "===>",len(L) 
+##		for i in range(0,len(L)):	#for each 1-PS on L
+##			DC=confg(); DC.Mops(L[i]); DS =set(); DC.Set(DS) # DS is the set of monomials associated to L[i]
+##			GC = confg(); DC.Min(GC); GS=set(); GC.Set(GS)  # GS is the set of minimals associated to L[i]
+##			flag=0 # Flag for discovering equal configurations.
+##			if  GS.issubset(FS) and  FS.issubset(GS): # discard if the set of minimal monomials are the same
+##				flag=1 #self=M+(L[i])
+##				FlagRepeat=1
+##				Temp.append(L[i])	  
+##			if (FS.issubset(DS)) and (flag==0): # minimals of self \subset of DS and do they have different minimal sets!
+##				S.append(L[i]) # S are the 1-PS that contain (self) as a subset
+##			DS.clear(); GS.clear()
+##		contained_on =len(S)# counts the number of configurations self is strictly contained.	 
+##		if FlagRepeat!=0:
+##			S.append(Temp[0]) # self maybe contained on itself	 
+##		return [contained_on,S]	
+##	#***TODO-J: If CheckMaxL is only summoned by maximal1ps, we can assume that flagrepeat=1 always.
+##			
+##
+##	def Compare(self,B,A): #it compares two 1-PS B and A to see if they induce equal configuration (uses minimal monomials)
+##		b = confg(); b.Mops(B);  setB=set(); b.Set(setB)	
+##		a = confg(); a.Mops(A); setA=set(); a.Set(setA)
+##		if setA.issubset(setB) and setB.issubset(setA):
+##			print "the 1-PS", B.get1PS(), "and", A.get1PS(), "induces the same 1-PS !!"
+##		elif setA.issubset(setB) and not(setB.issubset(setA)):
+##			print "the 1-PS", A.get1PS(), "is contained in", B.get1PS()	
+##		elif not(setA.issubset(setB)) and setB.issubset(setA):
+##			print "the 1-PS", B.get1PS(), "is contained", A.get1PS()
+##		else:
+##			print "the 1-PS", B.get1PS(), "and", A.get1PS(), "are not contained in each other."			
+##	
+##
+##	def Invariants(self,B): #Given the 1-PS B, generates on self the set of invariant monomials
+##		A =confg()		
+##		A.Allconfg() # all the monomials
+##		for i in range(0,len(A)):
+##			if B.Prod(A[i])==0:	
+##				self.append(A[i])
+##
+##	def AllOPS(self,B):# generates a set B of 1-PS generated by three monomials on a configuration self
+##		for i in range(0,len(self)):
+##			for j in range(0,len(self)):
+##				for k in range(0,len(self)):
+##					if i!= j and i!=k and j!=k:# three different monomials					
+##						A=O.OPS(1,0,0,-1)
+##						A.associated1ps(self[i],self[j],self[k]) # The 1-PS passing by those monomials	
+##						flag=0 # marks if the 1-PS is stored in B already.
+##						for i in range(0,len(B)):# if the new 1-PS A is already, then I marked it
+##							if A == B[i]:
+##								flag=1
+##						if flag==0:
+##							B.append(A) # I only add the new 1-PS.
+##
+##							
+##	def AllOPS23(self,C2,C3,B):# generates a set B of 1-PS generated by three monomials on a configuration self, C2, C3
+##		for i in range(0,len(self)):
+##			for j in range(0,len(C2)):
+##				for k in range(0,len(C3)):
+##					if i!= j and i!=k and j!=k:# three different monomials					
+##						A=O.OPS(1,0,0,-1)
+##						A.associated1ps(self[i],self[j],self[k]) # The 1-PS passing by those monomials	
+##						k=0 # marks if the 1-PS is stored in B already.
+##						for i in range(0,len(B)):# if the new 1-PS A is already, then I marked it
+##							if A == B[i]:
+##								k=k+1
+##						if k==0:
+##							B.append(A) # I only add the new 1-PS	
+##	#***TODO-J:	This procedure does at the moment:
+##	#			Generates all 1ps (planes in R^3 passing through the centre) by finding all pairs of monomials and puts them in A
+##	#			For each generation it removes those that are repeated in A, by putting in B *only* those which are not repeated.
+##	#		To do this, it uses A and B to be lists
+##	#		Ideally A=B is a set and there is no need for two of them, optimising the code by removing the inside loop.
+##	#		However, this depends on whether Python considers two elements a,b of a set to be equal if they have the same bytes
+##	#		or if a==b.
+##	def AllNormalizeOPS(self,B):# generates list B of all normalized 1-PS associated to two monomials + center on a configuration self
+##		R=confg()
+##		deg= d
+##		m0= M.monomial(deg/4.0,deg/4.0,deg/4.0,deg/4.0) # the center of the polytope.
+##		for j in range(0,len(self)):
+##			for k in range(0,len(self)):
+##				if j!=k: # I am taking two differents monomials in the configuration
+##					A=O.OPS(1,0,0,-1)
+##					A.associated1ps(m0,self[j],self[k])
+##					flag=0
+##					for i in range(0,len(B)): # Check if the 1-PS "A" is already in the list B	
+##						if A == B[i]:
+##							flag=1
+##					if (flag==0) and (A.is_Normalized()):					
+##						B.append(A)
+##		# next I had the three hyperplanes of the boundary				
+##		#D1=O.OPS(1,1,1,-3); D2=O.OPS(3,-1,-1,-1)
+##		#B.append(D1); B.append(D2); 				
+##
+##	def AllNormalizeOPSMod(self,B):# modified to include anti-normalized
+##		R=confg()
+##		deg=R.degree()
+##		m0= M.monomial(deg/4.0,deg/4.0,deg/4.0,deg/4.0) # the center of the polytope.
+##		for j in range(0,len(self)):
+##			for k in range(0,len(self)):
+##				if j!=k: # I am taking two differents monomials in the configuration
+##					A=O.OPS(1,0,0,-1)
+##					A.associated1ps(m0,self[j],self[k])
+##					flag=0
+##					for i in range(0,len(B)): # Check if the 1-PS "A" is already in the list B	
+##						if A == B[i]:
+##							flag=1
+##					if (flag==0) and (A.is_Normalized() or A.is_NegNormalized()):					
+##						B.append(A)
+##
+##	def Print(self): #print in a nice way. 
+##		L=[]	
+##		for s in range(0,len(self)): # The purpose is to find the multiplicity
+##			L.append((self[s].getX())[3])
+##		if len(L)==0:	
+##			return
+##		else:
+##			f=max(L); # the mulitplicity of self at [0:0:0:1]		
+##			for i in range(0,f+1):
+##				for j in range(0,len(self)):
+##					if (self[j].getX()[3])==(f-i): # selec the monomials with mulitplicty starting at f to zero
+##						print self[j].getX()		
+##
+##############################################################################################################################################
+######	THE FOLLOWING ARE PROCEDURES FOR LEARNING THE GEOMETRY OF THE CONFIGURATION
+##############################################################################################################################################
+##	
+##													
+##	def MinA(self,B):  # Given a configuration (self) of monomials returns the minimal from the analytical point of view 
+##		for i in range(0,len(self)):
+##			k=0; #marker for detecting non minimals
+##			for j in range(0,len(self)):			
+##				if self[i].ComA(self[j])==1 and self[i]!=self[j] :#if someone different and comparable is smaller
+##					k=k+1
+##			if k==0:
+##				B.append(self[i])				
+##		
+### We localize at [0:0:0:1], then we blow up along the line x=y=0 which we suppose has multiplicity two. This is done in two charts since we localize. Then we put zero en the coefficient associated to the last variable.	
+##			
+##	def BlowUpLy(self,B): # Self is the configuration that we blow up. The chart associated to x=x; y=xy; z=z
+##		for i in range(0,len(self)):		
+##			[a,b,c,e]=self[i].getX()
+##			B.append(M.monomial(a,a+b-2,c,0))
+##	def BlowUpLx(self,B): # the chart associated to x=xy; y=y; z=z
+##		l =len(self)
+##		for i in range(0,l):		
+##			[a,b,c,e]=self[i].getX()
+##			B.append(M.monomial(a+b-2,b,c,0))	
+##			
+##	def BlowUp(self,B,i): # blow up at [0,0,1]; i indicates variable is kept fixed. If x=x then i=1,if y=y then i=2, if z=z then i=3 
+##		l =len(self) 
+##		Temp1=[]  
+##		for s in range(0,l):
+##			Temp1.append(self[s].getX()[3])
+##		mult= d -max(Temp1) # multiplicity at [0:0:0:1]
+##		if i==1:
+##			for j in range(0,l):		
+##				[a,b,c,e]=self[j].getX()
+##				B.append(M.monomial(a+b+c-mult,b,c,0))
+##		elif i==2:
+##			for j in range(0,l):		
+##				[a,b,c,e]=self[j].getX()
+##				B.append(M.monomial(a,a+b+c-mult,c,0))
+##		elif i==3:
+##			for j in range(0,l):		
+##				[a,b,c,e]=self[j].getX()
+##				B.append(M.monomial(a,b,a+b+c-mult,0))								
+##		
+##	def PrintFlag(self): # print geometric information of a configuration, specially its intersection with a standar flag
+##		l=len(self)				
+##		Temp1=[]  #tangent cone
+##		dg =self.degree()
+##		for s in range(0,l):
+##			Temp1.append(self[s].getX()[3])
+##		if len(Temp1)!=0:	
+##			print "The tangent cone associated to a point of multiplicty:", dg-max(Temp1) , " is:"
+##			for i in range(0,l):
+##				if (dg-self[i].getX()[0]-self[i].getX()[1]-self[i].getX()[2])==max(Temp1):
+##					print self[i].getX() # monomials in the tangent cone
+##		else:
+##			print "WARNING! please review it, there is not tangent cone"
+##		# intersection with the line (x=y=0)
+##		Temp=[]    
+##		for i in range(0,l):
+##			Temp.append(self[i].getX()[0]+self[i].getX()[1]) # multiplicity at x=y=0 
+##		if len(Temp)!=0:			
+##			if min(Temp)==2:
+##				print "the surface contains a double line", 
+##				"""
+##				next we blow up the double line, and we describe its charts" 
+##				# we blow up the double line, and we describe its info
+##				#first chart
+##				BLy=confg()
+##				self.BlowUpLy(BLy)
+##				print "the monomials on the chart such that y=y", BLy.Print()
+##				ABly= confg(); BLy.MinA(ABly)
+##				print "the analytical reduction at the normalization of chart induced by y=y";
+##				ABly.Print()
+##				#second chart
+##				BLx=confg()
+##				self.BlowUpLx(BLx)
+##				print " chart such that x=x", BLx.Print()
+##				ABlx= confg(); BLx.MinA(ABlx)
+##				print "analytical reduction at the normalization of chart induced by x=x";
+##				ABlx.Print()
+##				"""
+##			elif min(Temp)==1:
+##				print "the surface contains the line, but it is not a double line"
+##			elif min(Temp)==0:
+##				for i in range(0,l):
+##					if self[i].getX()[0]==0 and (self[i].getX())[1]==0:
+##						print "it does not contain the line x=y=0. Intersects it at"; 
+##						print self[i].getX()
+##			elif min(Temp)>2:
+##				print "the surface contains at least a line with multiplicity", min(Temp)
+##		else:
+##			print "WARNING! we dont intersect the line, please review it"		
+##		# Intersecting with the plane (x=0)
+##		Temp2=[] # multiplicity
+##		for s in range(0,l):
+##			Temp2.append(self[s].getX()[0])	
+##		if len(Temp2)!=0:			
+##			if min(Temp2)>=2:
+##				print "the surface contains a non reduced plane, with multiplicity ", min(Temp2)
+##			elif min(Temp2)==1:
+##				print "the surface descomposes as a hyperplane and a quartic surface which is given by"
+##				Q=confg()
+##				for i in range(0,len(self)):
+##					Q.append(M.monomial(self[i].getX()[0]-1,self[i].getX()[1],self[i].getX()[2],self[i].getX()[3]))
+##				Q.PrintFlag()
+##				print "the intersection between the hyperplane and the quartic is"
+##				for i in range(0,len(Q)):
+##					if Q[i].getX()[0]==0:
+##						print Q[i].getX()
+##			elif min(Temp2)==0:
+##				print "the surface does not contains the plane. Its intersection with the plane is"
+##				for i in range(0,l):
+##					if self[i].getX()[0]==0:
+##						print self[i].getX()
+##		else:
+##			print "WARNING! review the configuration it does not intersect the plane"				
+##		### if the singularity is isolated. Calculate its basic analytical reduction
+##		F=confg()
+##		self.MinA(F)
+##		print "we calculated the analytical reduction of the configuration at (0,0,0)"
+##		F.Print()
+##		print "The minimal monomials on the Mukai order are:"		
+##		FW=confg()
+##		self.Min(FW)
+##		FW.Print()				
+##
+###################### NEXT: Hilbert-Mumford numerical criterion.
+##
+##	def Numerical_detailed(self,L): #here L is an OPS, self is config. It generates a list with the numerical criterion for each monomial
+##		R=[]
+##		for i in range(0,len(self)):
+##			R.append(L.Prod(self[i]))
+##		if len(R) != 0:
+##			return sorted(R)[0]	# it returns the minimal value	
+##		elif len(R)==0 and len(self)!=0:
+##			print "review the list on numerical function"
+##			
+##	def HM_detailed(self,Lst):# the hilbert -Mumford criterion for configuration self with respect the list LI of 1-PS
+##		DM=[]
+##		for i in range(0,len(Lst)):
+##			DM.append(self.Numerical_detailed(Lst[i]))					
+##		if len(DM)!=0:
+##			return 	sorted(DM)[len(DM)-1]# the highest value of the numerical criterion.	
+##		else:
+##			print "warning function HM_detailed"	
+##			
+##	def HM2_detailed(self,Lst):# Description if the H-M criterion for configuration self with respect the list LI of 1-PS
+##		DM= []
+##		for i in range(0,len(Lst)):
+##			DM.append(self.Numerical(Lst[i]))			
+##			if self.Numerical(Lst[i]) == 0 : 
+##				print "is semistabilized by the 1-PS", Lst[i].get1PS()
+##			if self.Numerical(Lst[i]) > 0 :
+##				print "is destabilized by 1-PS", Lst[i].get1PS()			
+##		if len(DM)!=0:
+##			print "the value of the HM is", sorted(DM)[len(DM)-1]					
+##			
+##	def Numerical(self,L): #here L is an OPS, self is config. 
+##		# Returns 1 if L.m > 0 for all monomials 
+##		# returns 0 if all the L.m >=0 with at least one monomial L.m=0 
+##		# returns -1 if L.m <0 for at least one monomials
+##		stability = 1 # the default monomials are in the top of the pyramid	
+##		for i in range(0,len(self)):				
+##			if L.Prod(self[i]) < 0:	# if there is a monomial inducing stability. We are done
+##				stability =-1
+##				break
+##			elif L.Prod(self[i]) == 0:
+##				stability =0
+##		return stability					
+##			
+##	def HM(self,Lst):# the hilbert -Mumford criterion for configuration self with respect the list LI of 1-PS
+##		# The purpose is to detect if there is a 1-PS such that 
+##		#  self*lambda >=0, then it is not stable 
+##		#  self* lambda > 0, the it is not semistable
+##		stability=-1 # suppose it is stable
+##		for i in range(0,len(Lst)): # start looking for a bad 1-PS 
+##			if self.Numerical(Lst[i]) > 0: #find a bad one!
+##				stability=1
+##				break
+##			elif self.Numerical(Lst[i]) ==0: # find a semistable, keep looking for a bad one.
+##				stability =0			
+##		return stability								 		
+##			
+##	def combine_nonstable(self, r, L): #return all NON STABLE subsets of r monomials with respect the 1-PS in L
+##		# the code was copied from http://docs.python.org/2/library/itertools.html#itertools.combinations
+##		# we will only return the non stable ones
+##		#
+##		pool = tuple(self)
+##    		n = len(pool)
+##    		if r > n:
+##        		return
+##    		indices = range(r)  
+##    		# I deliver the first r elements of self 
+##    		# function HM calculates the Hilbert-Numerical criterion.
+##    		CI=confg()
+##    		confg(pool[i] for i in indices).Min(CI)
+##		if CI.HM(L) >= 0: #continue if non stable..
+##			yield confg(pool[i] for i in indices)
+##    		# we deliver the other non stable configurations
+##   		while True:
+##      			for i in range(r,0):
+##            			if indices[i] != i + n - r:
+##                			break
+##       			else:
+##          			return
+##        		indices[i] += 1
+##        		for j in range(i+1, r):
+##        			indices[j] = indices[j-1] + 1	
+##			# we only return the nonstable ones
+##			CA=confg()
+##			confg(pool[i] for i in indices).Min(CA)
+##			if CA.HM(L) >= 0:      			
+##        			yield confg(pool[i] for i in indices)	
+##
+##	def combine_pure(self, r): #return all NON STABLE subsets of r monomials with respect the 1-PS in L
+##		# the code was copied from http://docs.python.org/2/library/itertools.html#itertools.combinations
+##		# we will only return the non stable ones
+##		#
+##		pool = tuple(self)
+##    		n = len(pool)
+##    		if r > n:
+##        		return
+##    		indices = range(r)  
+##		yield confg(pool[i] for i in indices)
+##    		# we deliver the other non stable configurations
+##   		while True:
+##      			for i in range(r,0):
+##            			if indices[i] != i + n - r:
+##                			break
+##       			else:
+##          			return
+##        		indices[i] += 1
+##        		for j in range(i+1, r):
+##        			indices[j] = indices[j-1] + 1	
+##        		yield confg(pool[i] for i in indices)
+##
+##
+##	"""
+##	def combine_nonstable(self, r): #return all NON STABLE subsets of r monomials 
+##		AllM =confg(); AllM.Allconfg() #  AllM = confg with of all monomials
+##		LS=[]; AllM.AllNormalizeOPS(LS) # LS stores all the normalized 1-PS (I must add boundary)  
+##		#
+##		pool = tuple(self)
+##    		n = len(pool)
+##    		if r > n:
+##        		return
+##    		indices = range(r)  
+##    		# I deliver the first r elements of self 
+##    		# function HM calculates the Hilbertl criterion.
+##    		CI=confg()
+##    		confg(pool[i] for i in indices).Min(CI)
+##		if CI.HM(LS) >= 0: #continue if non stable..
+##			yield confg(pool[i] for i in indices)
+##    		# we deliver the other non stable configurations
+##   		while True:
+##      			for i in reversed(range(r)):
+##            			if indices[i] != i + n - r:
+##                			break
+##       			else:
+##          			return
+##        		indices[i] += 1
+##        		for j in range(i+1, r):
+##        			indices[j] = indices[j-1] + 1	
+##			# we only return the nonstable ones
+##			CA=confg()
+##			confg(pool[i] for i in indices).Min(CA)
+##			if CA.HM(LS) >= 0:      			
+##        			yield confg(pool[i] for i in indices)	
+##	
+##	"""
+#####################################################################################################################################				
+####### Dec 16, I had not review the following.
+##
+##
+##			
+##	"""
+##
+##
+##		
+##
+##	def Gen(self, H, B): # from H generates the confg self taking monomials from confg B by using the Mukai order  T.Gen(N,AllM) 
+##		S=set()
+##		for i in range(0,len(H)):
+##			for j in range(0,len(B)):
+##				if B[j]>=H[i]:
+##					(k0,k1,k2,k3) = (B[j].getX()[0],B[j].getX()[1],B[j].getX()[2],B[j].getX()[3]) # from monomial to a tuple
+##					S.add((k0,k1,k2,k3))				
+##		A=[]
+##		A=list(S)	
+##		self.convert(A)
+##		#		for in range(0,len(A)):
+##		#			selfconvert(self,B)
+##		#		print self #self.Print()
+##				
+##"""
