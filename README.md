@@ -1,4 +1,4 @@
-# Varitions of GIT quotients package
+# Variations of GIT quotients package
 
 This page is a complement to the articles Moduli of cubic surfaces and their anticanonical divisors and Variations of geometric invariant quotients for pairs, a computational approach authored by Patricio Gallardo and Jesus Martinez-Garcia
 (see home page). The following instructions are intended for the readers that want to use the raw output of our program, and for the readers that want to run the program by themselves.
